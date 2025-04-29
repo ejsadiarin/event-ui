@@ -1,18 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { eventsAPI } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner'; // Import toast from sonner
+import { toast } from 'sonner';
 import { formatDate } from '@/lib/utils';
 
-export default function EventPage({ params }: { params: { id: string } }) {
+export default function EventPage({ params }: { params: Promise<{ id: string }> }) {
+    const resolvedParams = use(params);
+    const eventId = parseInt(resolvedParams.id);
+
     const { user } = useAuth();
     const router = useRouter();
-    const eventId = parseInt(params.id);
 
     const [event, setEvent] = useState<any>(null);
     const [availableSlots, setAvailableSlots] = useState<number>(0);
@@ -28,7 +30,6 @@ export default function EventPage({ params }: { params: { id: string } }) {
                 const currentEvent = events.find((e: any) => e.id === eventId);
 
                 if (!currentEvent) {
-                    // Use Sonner toast
                     toast.error("Error", {
                         description: "Event not found",
                     });
@@ -46,7 +47,6 @@ export default function EventPage({ params }: { params: { id: string } }) {
                 }
             } catch (error) {
                 console.error('Failed to fetch event details:', error);
-                // Use Sonner toast
                 toast.error("Error", {
                     description: "Failed to fetch event details",
                 });
@@ -60,7 +60,6 @@ export default function EventPage({ params }: { params: { id: string } }) {
 
     const handleRegister = async () => {
         if (!user) {
-            // Use Sonner toast
             toast.error("Authentication Required", {
                 description: "Please login to register for this event",
             });
@@ -73,13 +72,11 @@ export default function EventPage({ params }: { params: { id: string } }) {
             const { availableSlots: newSlots } = await eventsAPI.registerForEvent(eventId);
             setAvailableSlots(newSlots);
             setIsRegistered(true);
-            // Use Sonner toast
             toast.success("Success!", {
                 description: "You have successfully registered for this event",
             });
         } catch (error) {
             console.error('Registration failed:', error);
-            // Use Sonner toast
             toast.error("Registration Failed", {
                 description: "Failed to register for this event. Please try again.",
             });

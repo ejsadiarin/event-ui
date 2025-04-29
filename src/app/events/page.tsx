@@ -45,7 +45,7 @@ export default function EventsPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="m-10 space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold">Upcoming Events</h1>
                 <Link href="/events/create">

@@ -39,7 +39,7 @@ export default function OrganizationsPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="m-10 space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold">Organizations</h1>
                 <Link href="/organizations/create">
