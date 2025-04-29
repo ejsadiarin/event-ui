@@ -47,6 +47,30 @@ export const authAPI = {
         const response = await apiClient.get('/auth/profile');
         return response.data;
     },
+
+    updateProfile: async (profileData: { email?: string; display_picture?: string }) => {
+        const response = await apiClient.put('/auth/profile', profileData);
+        // Update stored user info
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+        localStorage.setItem('user', JSON.stringify({
+            ...currentUser,
+            ...profileData
+        }));
+        return response.data;
+    },
+
+    changePassword: async (passwordData: { currentPassword: string; newPassword: string }) => {
+        const response = await apiClient.put('/auth/password', passwordData);
+        return response.data;
+    },
+
+    deleteAccount: async () => {
+        const response = await apiClient.delete('/auth/account');
+        // Clear user data from localStorage
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        return response.data;
+    },
 };
 
 // API functions for events

@@ -30,7 +30,15 @@ export default function RootLayout({
                             © {new Date().getFullYear()} Event Hub. All rights reserved.
                         </div>
                     </footer>
-                    <Toaster position="top-center" />
+                    <Toaster
+                        position="top-right"
+                        offset="16px"
+                        toastOptions={{
+                            style: {
+                                marginTop: '64px'
+                            }
+                        }}
+                    />
                 </AuthProvider>
             </body>
         </html>
