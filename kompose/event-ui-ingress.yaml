@@ -1,0 +1,23 @@
+---
+# https://kubernetes.io/docs/concepts/services-networking/ingress/
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: event-ui-ingress
+  namespace: default
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: "web"
+    traefik.ingress.kubernetes.io/router.middlewares: "default-redirect-https@kubernetescrd"
+spec:
+  ingressClassName: "traefik"
+  rules:
+    - host: event.ejsadiarin.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: event-ui
+                port:
+                  number: 3000

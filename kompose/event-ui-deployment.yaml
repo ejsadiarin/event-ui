@@ -1,0 +1,35 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f compose.yml -o kompose
+    kompose.version: 1.35.0 (9532ceef3)
+  labels:
+    io.kompose.service: event-ui
+  name: event-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: event-ui
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f compose.yml -o kompose
+        kompose.version: 1.35.0 (9532ceef3)
+      labels:
+        io.kompose.service: event-ui
+    spec:
+      containers:
+        - env:
+            - name: NEXT_PUBLIC_API_URL
+              value: http://event-api:3001/api
+            - name: NODE_ENV
+              value: production
+          image: ghcr.io/ejsadiarin/event-ui:latest
+          name: event-ui
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+      restartPolicy: Always
