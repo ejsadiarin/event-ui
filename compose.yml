@@ -1,0 +1,14 @@
+---
+services:
+  event-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/ejsadiarin/event-ui:latest
+    container_name: event-ui
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://event-api.ejsadiarin.com:3001/api
+    restart: unless-stopped
