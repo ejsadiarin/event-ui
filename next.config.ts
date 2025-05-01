@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
         return [
             {
                 source: '/api/:path*',
-                destination: `http://event-api.default.svc.cluster.local/:path*`,
+                destination: `event-api.default.svc.cluster.local/:path*`,
             },
         ]
     },
