@@ -35,24 +35,24 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
-# Adding Metrics (for Prometheus)
+# FRONTEND: Adding Metrics (for Prometheus)
 
-### 1. Create a Custom Metrics Route
+This guide walks through setting up Prometheus metrics for a Next.js application running in a K3s environment.
 
-We'll create a dedicated metrics endpoint at `/monitoring/metrics` to avoid conflicts with your backend API.
+## 1. Install Required Packages
 
-First, let's install the required packages:
+First, let's install the necessary packages:
 
 ```bash
 npm install prom-client next-metrics
 ```
 
-### 2. Create the Metrics Setup
+## 2. Create the Metrics Setup
 
-Create a new metrics utility file:
+Create server-side metrics utility file:
 
 ```typescript
-// src/lib/metrics.ts
+// src/lib/server-metrics.ts
 import client from 'prom-client';
 
 // Create a Registry to register metrics
@@ -62,7 +62,7 @@ const register = new client.Registry();
 client.collectDefaultMetrics({ register });
 
 // HTTP request counter
-export const httpRequestCounter = new client.Counter({
+const httpRequestCounter = new client.Counter({
   name: 'next_http_requests_total',
   help: 'Total number of HTTP requests',
   labelNames: ['method', 'path', 'status'],
@@ -70,7 +70,7 @@ export const httpRequestCounter = new client.Counter({
 });
 
 // Page render time histogram
-export const pageRenderTime = new client.Histogram({
+const pageRenderTime = new client.Histogram({
   name: 'next_page_render_duration_seconds',
   help: 'Time taken to render pages',
   labelNames: ['page'],
@@ -78,23 +78,51 @@ export const pageRenderTime = new client.Histogram({
 });
 
 // API request duration histogram
-export const apiRequestDuration = new client.Histogram({
+const apiRequestDuration = new client.Histogram({
   name: 'next_api_request_duration_seconds',
   help: 'Duration of API requests',
   labelNames: ['endpoint', 'method'],
   registers: [register]
 });
 
-// Export the registry
-export { register };
+// Export the registry and metrics
+export {
+  register,
+  httpRequestCounter,
+  pageRenderTime,
+  apiRequestDuration
+};
 ```
 
-### 3. Create the Metrics Endpoint
+Create client-side safe metrics file:
+
+```typescript
+// src/lib/metrics.ts
+'use client';
+
+// Client-side safe placeholder for metrics when running in browser
+class ClientSafeMetrics {
+  inc(labels?: Record<string, any>) { } // Placeholder for counter.inc()
+  observe(labels?: Record<string, any>, value?: number) { } // Placeholder for histogram.observe()
+}
+
+export const httpRequestCounter = new ClientSafeMetrics();
+export const pageRenderTime = new ClientSafeMetrics();
+export const apiRequestDuration = new ClientSafeMetrics();
+
+// Export empty registry for client-side
+export const register = {
+  metrics: async () => '',
+  contentType: 'text/plain',
+};
+```
+
+## 3. Create the Metrics Endpoint
 
 ```typescript
 // src/app/monitoring/metrics/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { register } from '@/lib/metrics';
+import { register } from '@/lib/server-metrics';
 
 export async function GET(req: NextRequest) {
   try {
@@ -112,13 +140,13 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-### 4. Implement Middleware for Tracking Requests
+## 4. Implement Middleware for Tracking Requests
 
 ```typescript
-// src/middleware.ts
+// src/app/middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { httpRequestCounter } from '@/lib/metrics';
+import { httpRequestCounter } from '@/lib/server-metrics';
 
 export function middleware(request: NextRequest) {
   // Get the URL and method
@@ -145,92 +173,89 @@ export function middleware(request: NextRequest) {
 // Apply to all routes except static files and monitoring
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for:
-     * - monitoring/metrics (metrics endpoint)
-     * - _next (Next.js internals)
-     * - static files like favicon.ico, images, etc.
-     */
     '/((?!monitoring/metrics|_next/static|favicon.ico|.*\\.).*)'
   ],
 };
 ```
 
-### 5. Instrument API Client
+## 5. Instrument API Client
 
 To track API calls from your frontend to your backend:
 
 ```typescript
-// Modify src/lib/api-client.ts
-import axios from 'axios';
-import { apiRequestDuration } from '@/lib/metrics';
+// src/lib/api-client.ts
+import axios, { InternalAxiosRequestConfig } from 'axios';
+import { apiRequestDuration } from '@/lib/metrics'; // Use client-safe metrics
+
+declare module 'axios' {
+  export interface InternalAxiosRequestConfig {
+    metadata?: {
+      startTime: number;
+    };
+  }
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 const apiClient = axios.create({
-    baseURL: API_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
 // Add interceptors to measure API call durations
-apiClient.interceptors.request.use((config) => {
-    // Add timing data to the request
-    config.metadata = { startTime: Date.now() };
-    
-    // Add auth token (existing code)
-    if (typeof window !== 'undefined') {
-        const token = localStorage.getItem('token');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
+apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  // Add timing data to the request
+  config.metadata = { startTime: Date.now() };
+  
+  // Add auth token (existing code)
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
-    return config;
+  }
+  return config;
 });
 
 apiClient.interceptors.response.use(
-    (response) => {
-        // Calculate request duration if startTime was set
-        if (response.config.metadata?.startTime) {
-            const duration = (Date.now() - response.config.metadata.startTime) / 1000;
-            const endpoint = response.config.url || 'unknown';
-            const method = response.config.method || 'unknown';
-            
-            // Record the timing in the histogram
-            apiRequestDuration.observe({ endpoint, method }, duration);
-        }
-        return response;
-    },
-    (error) => {
-        // Still track timing for failed requests
-        if (error.config?.metadata?.startTime) {
-            const duration = (Date.now() - error.config.metadata.startTime) / 1000;
-            const endpoint = error.config.url || 'unknown';
-            const method = error.config.method || 'unknown';
-            
-            // Record the timing in the histogram
-            apiRequestDuration.observe({ endpoint, method }, duration);
-        }
-        return Promise.reject(error);
+  (response) => {
+    // Calculate request duration if startTime was set
+    if (response.config.metadata?.startTime) {
+      const duration = (Date.now() - response.config.metadata.startTime) / 1000;
+      const endpoint = response.config.url || 'unknown';
+      const method = response.config.method || 'unknown';
+      
+      // Record the timing in the histogram
+      apiRequestDuration.observe({ endpoint, method }, duration);
     }
+    return response;
+  },
+  (error) => {
+    // Still track timing for failed requests
+    if (error.config?.metadata?.startTime) {
+      const duration = (Date.now() - error.config.metadata.startTime) / 1000;
+      const endpoint = error.config.url || 'unknown';
+      const method = error.config.method || 'unknown';
+      
+      // Record the timing in the histogram
+      apiRequestDuration.observe({ endpoint, method }, duration);
+    }
+    return Promise.reject(error);
+  }
 );
 
-// Rest of your API client code remains the same...
+// Rest of your API client code remains the same
 ```
 
-### 6. Expose Metrics in Docker/K3s
+## 6. K3s Deployment Configuration
 
-Update your Dockerfile to ensure the metrics endpoint is accessible:
+### Docker Compose with Labels
 
-```dockerfile
-# No changes needed to your Dockerfile - just ensure port 3000 is exposed
-```
-
-Update your compose.yml to include a label for Prometheus scraping (if you're using Prometheus Operator):
+Update your compose.yml to include Prometheus labels:
 
 ```yaml
----
 services:
   event-ui:
     build:
@@ -251,13 +276,151 @@ services:
       prometheus.io/path: "/monitoring/metrics"
 ```
 
----
+### Kubernetes Deployment with ServiceMonitor
+
+For a K3s cluster running the kube-prometheus-stack, create a ServiceMonitor CRD:
+
+#### Step 1: Create a Kubernetes Service resource
+
+```yaml
+# event-ui-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-ui
+  labels:
+    app: event-ui
+spec:
+  selector:
+    app: event-ui
+  ports:
+  - name: web
+    port: 3000
+    targetPort: 3000
+  type: ClusterIP
+```
+
+#### Step 2: Create a ServiceMonitor
+
+```yaml
+# event-ui-servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: event-ui-monitor
+  namespace: monitoring  # Must be in the same namespace as Prometheus
+  labels:
+    release: prometheus  # Match the label used by the kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: event-ui
+  endpoints:
+  - port: web
+    path: /monitoring/metrics
+    interval: 15s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - default  # Change to the namespace where your app is deployed
+```
+
+#### Step 3: Apply the configurations
+
+```bash
+kubectl apply -f event-ui-service.yaml
+kubectl apply -f event-ui-servicemonitor.yaml
+```
+
+### Ingress with Traefik Configuration
+
+If you're using Traefik as an Ingress controller in your K3s cluster:
+
+```yaml
+# event-ui-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: event-ui-ingress
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.middlewares: default-strip-prefix@kubernetescrd
+spec:
+  rules:
+  - host: event-ui.example.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: event-ui
+            port:
+              number: 3000
+```
+
+## 7. Grafana Configuration
+
+After deploying the metrics, you can configure Grafana dashboards:
+
+### Basic Next.js Dashboard
+
+Create a new dashboard in Grafana with these panels:
+
+1. **HTTP Request Rate**: 
+   ```
+   sum(rate(next_http_requests_total[5m])) by (path)
+   ```
+
+2. **HTTP Status Codes**:
+   ```
+   sum(rate(next_http_requests_total[5m])) by (status)
+   ```
+
+3. **API Request Duration (95th percentile)**:
+   ```
+   histogram_quantile(0.95, sum(rate(next_api_request_duration_seconds_bucket[5m])) by (endpoint, le))
+   ```
+
+4. **Memory Usage**:
+   ```
+   process_resident_memory_bytes{job="event-ui"}
+   ```
+
+## 8. Loki Integration for Logs
+
+Since you're using Loki with Grafana, add log collection:
+
+1. Deploy Promtail as a sidecar or DaemonSet to collect logs
+2. Configure Promtail to add application-specific labels
+
+Example Promtail configuration for your Next.js app:
+
+```yaml
+scrape_configs:
+  - job_name: event-ui-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: event-ui
+          __path__: /var/log/containers/event-ui-*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: time
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+```
 
 ## Available Metrics
 
-This application includes built-in metrics for Prometheus monitoring.
-
-The application exposes the following metrics:
+This application includes built-in metrics for Prometheus monitoring:
 
 1. **Default Node.js metrics** - Memory usage, CPU usage, event loop lag, etc.
 2. **HTTP request metrics** - Count of HTTP requests by method, path, and status
@@ -268,47 +431,7 @@ The application exposes the following metrics:
 
 Metrics are available at the `/monitoring/metrics` endpoint in Prometheus format.
 
-## Kubernetes/K3s Setup
-
-When deploying in Kubernetes or K3s with Prometheus Operator, add these annotations to your deployment:
-
-```yaml
-metadata:
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "3000"
-    prometheus.io/path: "/monitoring/metrics"
-```
-
-## Local Development
-
-For local development and testing, you can access metrics at:
-```
-http://localhost:3000/monitoring/metrics
-```
-
-## Implementation Details
-
-- Metrics are implemented using `prom-client`
-- All HTTP requests are tracked via Next.js middleware
-- API calls to the backend are timed via axios interceptors
-
-## Additional Notes
-
-1. This implementation keeps your metrics separate from your backend API by using a dedicated `/monitoring/metrics` path.
-
-2. In a Kubernetes environment, you can use annotations to tell Prometheus which pods to scrape and where to find metrics.
-
-3. This approach works well for a Next.js application regardless of whether it's running in standalone mode or with a separate backend.
-
-4. This implementation includes metrics for:
-   - HTTP requests to your Next.js app
-   - API calls from your frontend to your backend
-   - Default Node.js process metrics
-
----
-
-### Frontend-Specific Metrics to Consider
+## Frontend-Specific Metrics to Consider
 
 For a frontend application like event-ui, consider monitoring:
 
@@ -328,4 +451,3 @@ For a frontend application like event-ui, consider monitoring:
    - Memory usage
    - CPU usage
    - Event loop lag
-
