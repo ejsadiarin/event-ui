@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { register } from '@/lib/metrics';
+import { register } from '@/lib/server-metrics'; // Use server metrics
 
 export async function GET(req: NextRequest) {
     try {

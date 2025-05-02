@@ -1,5 +1,5 @@
-import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
-import { apiRequestDuration } from '@/lib/metrics';
+import axios, { InternalAxiosRequestConfig } from 'axios';
+import { apiRequestDuration } from '@/lib/metrics'; // Use client-safe metrics
 
 declare module 'axios' {
     export interface InternalAxiosRequestConfig {

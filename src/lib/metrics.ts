@@ -1,34 +1,17 @@
-import client from 'prom-client';
+'use client';
 
-// Create a Registry to register metrics
-const register = new client.Registry();
+// Client-side safe placeholder for metrics when running in browser
+class ClientSafeMetrics {
+    inc(labels?: Record<string, any>) { } // Placeholder for counter.inc()
+    observe(labels?: Record<string, any>, value?: number) { } // Placeholder for histogram.observe()
+}
 
-// Add default metrics (CPU, memory usage, etc.)
-client.collectDefaultMetrics({ register });
+export const httpRequestCounter = new ClientSafeMetrics();
+export const pageRenderTime = new ClientSafeMetrics();
+export const apiRequestDuration = new ClientSafeMetrics();
 
-// HTTP request counter
-export const httpRequestCounter = new client.Counter({
-    name: 'next_http_requests_total',
-    help: 'Total number of HTTP requests',
-    labelNames: ['method', 'path', 'status'],
-    registers: [register]
-});
-
-// Page render time histogram
-export const pageRenderTime = new client.Histogram({
-    name: 'next_page_render_duration_seconds',
-    help: 'Time taken to render pages',
-    labelNames: ['page'],
-    registers: [register]
-});
-
-// API request duration histogram
-export const apiRequestDuration = new client.Histogram({
-    name: 'next_api_request_duration_seconds',
-    help: 'Duration of API requests',
-    labelNames: ['endpoint', 'method'],
-    registers: [register]
-});
-
-// Export the registry
-export { register };
+// Export empty registry for client-side
+export const register = {
+    metrics: async () => '',
+    contentType: 'text/plain',
+};
