@@ -1,7 +1,15 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+import { apiRequestDuration } from '@/lib/metrics';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api'
+declare module 'axios' {
+    export interface InternalAxiosRequestConfig {
+        metadata?: {
+            startTime: number;
+        };
+    }
+}
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 const apiClient = axios.create({
     baseURL: API_URL,
@@ -10,9 +18,12 @@ const apiClient = axios.create({
     },
 });
 
-// Add interceptor to add auth token to requests
-apiClient.interceptors.request.use((config) => {
-    // Get token from localStorage (client-side only)
+// Add interceptors to measure API call durations
+apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+    // Add timing data to the request
+    config.metadata = { startTime: Date.now() };
+
+    // Add auth token (existing code)
     if (typeof window !== 'undefined') {
         const token = localStorage.getItem('token');
         if (token) {
@@ -21,6 +32,33 @@ apiClient.interceptors.request.use((config) => {
     }
     return config;
 });
+
+apiClient.interceptors.response.use(
+    (response) => {
+        // Calculate request duration if startTime was set
+        if (response.config.metadata?.startTime) {
+            const duration = (Date.now() - response.config.metadata.startTime) / 1000;
+            const endpoint = response.config.url || 'unknown';
+            const method = response.config.method || 'unknown';
+
+            // Record the timing in the histogram
+            apiRequestDuration.observe({ endpoint, method }, duration);
+        }
+        return response;
+    },
+    (error) => {
+        // Still track timing for failed requests
+        if (error.config?.metadata?.startTime) {
+            const duration = (Date.now() - error.config.metadata.startTime) / 1000;
+            const endpoint = error.config.url || 'unknown';
+            const method = error.config.method || 'unknown';
+
+            // Record the timing in the histogram
+            apiRequestDuration.observe({ endpoint, method }, duration);
+        }
+        return Promise.reject(error);
+    }
+);
 
 // API functions for auth
 export const authAPI = {

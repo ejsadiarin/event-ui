@@ -12,3 +12,8 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://event-api:3001/api
     restart: unless-stopped
+    # labels:
+    #   # Add these labels for Prometheus to scrape your app
+    #   prometheus.io/scrape: "true"
+    #   prometheus.io/port: "3000"
+    #   prometheus.io/path: "/monitoring/metrics"
